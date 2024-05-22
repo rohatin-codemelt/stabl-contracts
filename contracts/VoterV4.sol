@@ -33,10 +33,18 @@ contract VoterV4 is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     address public permissionRegistry;                          // registry to check accesses
     address[] public pools;                                     // all pools viable for incentives
 
+    struct VoteData {
+        address[] poolVotes;
+        uint256[] weights;
+        uint256 votedAt;
+    }                                  
+
+
     uint256 internal index;                                        // gauge index
     uint256 internal constant DURATION = 7 days;                   // rewards are released over 7 days
     uint256 public VOTE_DELAY;                                     // delay between votes in seconds
     uint256 public constant MAX_VOTE_DELAY = 7 days;               // Max vote delay allowed
+    uint256[] private tokenVoteKeys;
 
     mapping(address => uint256) internal supplyIndex;              // gauge    => index
     mapping(address => uint256) public claimable;                  // gauge    => claimable $retro
@@ -55,6 +63,7 @@ contract VoterV4 is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     mapping(address => bool) public isAlive;                    // gauge    => boolean [is the gauge alive?]
     mapping(address => bool) public isFactory;                  // factory  => boolean [the pair factory exists?]
     mapping(address => bool) public isGaugeFactory;             // g.factory=> boolean [the gauge factory exists?]
+    mapping(uint256 => VoteData) private tokenVotes;
 
     event GaugeCreated(address indexed gauge, address creator, address internal_bribe, address indexed external_bribe, address indexed pool);
     event GaugeKilled(address indexed gauge);
@@ -239,6 +248,19 @@ contract VoterV4 is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emit SetPairFactory(oldPF, address(0));
     }
     
+    function autoVote(uint256 startIndex, uint256 endIndex) external VoterAdmin {
+        //leave the option to batch the autoVote in multiple request in case the array is too long
+        require(startIndex > 0);
+        require(endIndex < tokenVoteKeys.length);
+        require(startIndex < endIndex);
+        uint256 blockTimestamp = block.timestamp;
+        for (uint256 i = startIndex; i < endIndex; i++) {
+            if(blockTimestamp - tokenVotes[tokenVoteKeys[i]].votedAt < 604800){
+                continue;
+            }
+            _vote(tokenVoteKeys[i], tokenVotes[tokenVoteKeys[i]].poolVotes, tokenVotes[tokenVoteKeys[i]].weights);
+        }
+    }
     
     /* -----------------------------------------------------------------------------
     --------------------------------------------------------------------------------
@@ -378,12 +400,47 @@ contract VoterV4 is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     /// @param  _tokenId    veNFT tokenID used to vote
     /// @param  _poolVote   array of LPs addresses to vote  (eg.: [sAMM usdc-usdt   , sAMM busd-usdt, vAMM wbnb-the ,...])
     /// @param  _weights    array of weights for each LPs   (eg.: [10               , 90            , 45             ,...])  
-    function vote(uint256 _tokenId, address[] calldata _poolVote, uint256[] calldata _weights) external nonReentrant {
+    function vote(uint256 _tokenId, address[] calldata _poolVote, uint256[] calldata _weights, bool autoVote) external nonReentrant {
         _voteDelay(_tokenId);
         require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId), "!ao");
         require(_poolVote.length == _weights.length, "pw");
         _vote(_tokenId, _poolVote, _weights);
         lastVoted[_tokenId] = _epochTimestamp() + 1;
+        if (tokenVotes[_tokenId].votedAt == 0 && autoVote) {
+            keys.push(_tokenId);
+        }
+        if (autoVote) {
+            //if the user votes again with autovote already in place just override the values
+            tokenVotes[_tokenId].poolVotes = _poolVote;
+            tokenVotes[_tokenId].votedAt = block.timestamp;
+            tokenVotes[_tokenId].weights = _weights;
+        }
+        else if(tokenVotes[_tokenId].votedAt != 0){
+            //let the user vote besides autovote but update the last vote timestamp to prevent double voting
+            tokenVotes[_tokenId].votedAt = block.timestamp;
+        }
+    }
+
+    function removeAutoVote(uint256 _tokenId){
+        require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId), "!ao");
+        uint256 index = -1;
+        for(uint256 i = 0; i < tokenVoteKeys.length; i++) {
+            if(tokenVoteKeys[i] == _tokenId){
+                index = i;
+            }
+        }
+        if(index != -1){
+            // based on https://ethereum.stackexchange.com/a/59234
+            //should be better than: delete tokenVoteKeys[index]
+            uint256 aux = tokenVoteKeys[array.length-1];
+            tokenVoteKeys[array.length-1] = tokenVoteKeys[index];
+            tokenVoteKeys[index] = aux;
+            tokenVoteKeys.pop();
+            delete tokenVotes[_tokenId];
+        }
+        else{
+            throw;
+        }
     }
     
     function _vote(uint256 _tokenId, address[] memory _poolVote, uint256[] memory _weights) internal {
@@ -592,9 +649,24 @@ contract VoterV4 is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     --------------------------------------------------------------------------------
     ----------------------------------------------------------------------------- */
 
+    /// @notice view the total count of nfts that opted for autovote
+    function autoVoteLength() external view returns (uint256) {
+        return tokenVoteKeys.length;
+    }
+
     /// @notice view the total length of the pools
     function length() external view returns (uint256) {
         return pools.length;
+    }
+
+    /// @notice check if an nft has autovote enabled
+    function tokenHasAutoVoteEnabled(uint256 tokenId) external view returns (bool) {
+        for(uint256 i = 0; i < tokenVoteKeys.length; i++){
+            if(tokenVoteKeys[i] == tokenId){
+                return true;
+            }
+        }
+        return false;
     }
 
     /// @notice view the total length of the voted pools given a tokenId
