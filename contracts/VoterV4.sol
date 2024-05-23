@@ -421,7 +421,7 @@ contract VoterV4 is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         }
     }
 
-    function removeAutoVote(uint256 _tokenId){
+    function removeAutoVote(uint256 _tokenId) external nonReentrant {
         require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId), "!ao");
         uint256 index = -1;
         for(uint256 i = 0; i < tokenVoteKeys.length; i++) {
