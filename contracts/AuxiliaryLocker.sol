@@ -47,7 +47,7 @@ contract AuxiliaryLocker is OwnableUpgradeable, ReentrancyGuardUpgradeable {
   --------------------------------------------------------------------------------
   ----------------------------------------------------------------------------- */
 
-  function renewLocks(uint256[] tokens) external Admin {
+  function renewLocks(uint256[] memory tokens) external Admin {
     require(tokens.length <= tokenLockIds.length);
     for(uint256 i = 0; i < tokens.length; i++) {
       IVotingEscrow(_ve).create_lock_for(tokenLocks[tokens[i]].value, tokenLocks[tokens[i]].lockDuration, IVotingEscrow(_ve).ownerOf(tokens[i]));
@@ -89,20 +89,20 @@ contract AuxiliaryLocker is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId), "!ao");
     require(_hasLock(_tokenId));
 
-    uint256 index = -1;
+    uint256 index = 0;
     for(uint256 i = 0; i < tokenLockIds.length; i++) {
       if(tokenLockIds[i] == _tokenId){
           index = i;
       }
     }
-    uint256 aux = tokenLockIds[array.length-1];
-    tokenLockIds[array.length-1] = tokenLockIds[index];
+    uint256 aux = tokenLockIds[tokenLockIds.length-1];
+    tokenLockIds[tokenLockIds.length-1] = tokenLockIds[index];
     tokenLockIds[index] = aux;
     tokenLockIds.pop();
     delete tokenLocks[_tokenId];
   }
 
-  function _hasLock(uint256 tokenId) internal returns(bool) {
+  function _hasLock(uint256 tokenId) internal view returns(bool) {
     for (uint256 i = 0; i < tokenLockIds.length; i++) {
       if(tokenLockIds[i] == tokenId) {
         return true;
@@ -123,20 +123,28 @@ contract AuxiliaryLocker is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     return tokenLockIds.length;
   }
 
-  function tokenHasLock(uint256 _tokenId) external view returns(uint256) {
+  function tokenHasLock(uint256 _tokenId) external view returns(bool) {
     return _hasLock(_tokenId);
   }
 
-  function tokenLockData(uint256 _tokenId) external view returns(LockData) {
+  function tokenLockData(uint256 _tokenId) external view returns(LockData memory) {
     return tokenLocks[_tokenId];
   }
 
-  function getTokensToRelock() external view returns(uint256[]) {
-    uint256[] tokensToReturn;
+  function getTokensToRelock() external view returns(uint256[] memory) {
+    uint256 arrLengthToInit = 0;
+    for (uint256 i = 0; i < tokenLockIds.length; i++) {
+      if(tokenLocks[tokenLockIds[i]].lastLockedAt + tokenLocks[tokenLockIds[i]].lockDuration > block.timestamp) {
+        arrLengthToInit++;
+      }
+    }
+    uint256[] memory tokensToReturn = new uint256[](arrLengthToInit);
+    uint256 currentIndex = 0;
 
     for (uint256 i = 0; i < tokenLockIds.length; i++) {
       if(tokenLocks[tokenLockIds[i]].lastLockedAt + tokenLocks[tokenLockIds[i]].lockDuration > block.timestamp) {
-        tokensToReturn.push(i);
+        tokensToReturn[currentIndex] = i;
+        currentIndex++;
       }
     }
     return tokensToReturn;

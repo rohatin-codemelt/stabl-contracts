@@ -407,7 +407,7 @@ contract VoterV4 is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         _vote(_tokenId, _poolVote, _weights);
         lastVoted[_tokenId] = _epochTimestamp() + 1;
         if (tokenVotes[_tokenId].votedAt == 0 && autoVote) {
-            keys.push(_tokenId);
+            tokenVoteKeys.push(_tokenId);
         }
         if (autoVote) {
             //if the user votes again with autovote already in place just override the values
@@ -423,23 +423,23 @@ contract VoterV4 is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     function removeAutoVote(uint256 _tokenId) external nonReentrant {
         require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId), "!ao");
-        uint256 index = -1;
+        uint256 index = tokenVoteKeys.length + 1;
         for(uint256 i = 0; i < tokenVoteKeys.length; i++) {
             if(tokenVoteKeys[i] == _tokenId){
                 index = i;
             }
         }
-        if(index != -1){
+        if(index != tokenVoteKeys.length + 1){
             // based on https://ethereum.stackexchange.com/a/59234
             //should be better than: delete tokenVoteKeys[index]
-            uint256 aux = tokenVoteKeys[array.length-1];
-            tokenVoteKeys[array.length-1] = tokenVoteKeys[index];
+            uint256 aux = tokenVoteKeys[tokenVoteKeys.length-1];
+            tokenVoteKeys[tokenVoteKeys.length-1] = tokenVoteKeys[index];
             tokenVoteKeys[index] = aux;
             tokenVoteKeys.pop();
             delete tokenVotes[_tokenId];
         }
         else{
-            throw;
+            revert();
         }
     }
     
