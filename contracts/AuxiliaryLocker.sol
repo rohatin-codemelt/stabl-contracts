@@ -7,6 +7,8 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 
 contract AuxiliaryLocker is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
+  bool internal initflag;
+
   struct LockData {
     uint256 value;
     uint256 lockDuration;
@@ -20,10 +22,7 @@ contract AuxiliaryLocker is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
   uint256[] tokenLockIds;
 
-  constructor(address __ve) {
-    permissionRegistry = msg.sender;
-    _ve = __ve;
-  }
+  constructor() { }
 
   /* -----------------------------------------------------------------------------
   --------------------------------------------------------------------------------
@@ -52,6 +51,12 @@ contract AuxiliaryLocker is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     for(uint256 i = 0; i < tokens.length; i++) {
       IVotingEscrow(_ve).create_lock_for(tokenLocks[tokens[i]].value, tokenLocks[tokens[i]].lockDuration, IVotingEscrow(_ve).ownerOf(tokens[i]));
     }
+  }
+
+  function initialize(address __ve) initializer public {
+    permissionRegistry = msg.sender;
+    _ve = __ve;
+    initflag = false;
   }
 
   function changeAdmin(address _newPermissionRegistry) external Admin {
